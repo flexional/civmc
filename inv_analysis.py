@@ -27,8 +27,10 @@ valid_mob_eids = [
         'minecraft:villager', 'minecraft:zombie_villager', 'minecraft:horse', 'minecraft:donkey', 'minecraft:mule'
         ]
 
-inv_content_headers = ['Entity Name', 'Entity Type', 'x', 'y', 'z', 'Item', 'Data/Damage', 'Count']
-item_total_headers = ['Item', 'Data/Damage', 'World Count']
+inv_content_headers = ['Entity Name', 'x', 'y', 'z', 'Item', 'Data/Damage', 'Count']
+world_total_headers = ['Item', 'Data/Damage', 'World Count']
+
+world_items = {}
 
 class Position(object):
     def __init__(self, x,y,z):
@@ -66,7 +68,13 @@ def items_from_nbt(nbtlist):
             items[iid] = {}
         if damage not in items[iid]:
             items[iid][damage] = 0
+        if iid not in world_items:
+            world_items[iid] = {}
+        if damage not in world_items[iid]:
+            world_items[iid][damage] = 0
+
         items[iid][damage] += count
+        world_items[iid][damage] += count
     return items
 
 def inventories_per_chunk(chunk):
@@ -133,21 +141,37 @@ def inventories_per_chunk(chunk):
             inventories.append(Inventory(eid, (x,y,z), items, saddle, armor))
     return inventories
 
-def print_results(inventories, f):
+def print_inv_contents(inventories, inv_f):
     """
     Write all inventories' type, coordinates, item name, item type, and item count to f.
 
     :param inventories: list of Inventory objects
-    :param f: open file descriptor for writing inventory data to
+    :param inv_f: open file descriptor for writing inventory data to
     """
 
-    csv_writer = csv.writer(f)
+    inv_writer = csv.writer(inv_f)
 
     # TODO: Probably could increase performance of this twice-nested loop
     for inventory in inventories:
         for iid, types in inventory.items.items():
             for type, count in types.items():
-                csv_writer.writerow([inventory.eid, '{0:.3g}'.format(inventory.pos.x), '{0:.3g}'.format(inventory.pos.y), '{0:.3g}'.format(inventory.pos.z), iid, type, count])
+                inv_writer.writerow([\
+                        inventory.eid, \
+                        '{0:.3g}'.format(inventory.pos.x), \
+                        '{0:.3g}'.format(inventory.pos.y), \
+                        '{0:.3g}'.format(inventory.pos.z), \
+                        iid, type, count\
+                        ])
+
+def print_world_contents(world_f):
+    """
+    :param world_f: open file descriptor for writing total world count data to
+    """
+
+    world_writer = csv.writer(world_f)
+    for iid, types in world_items.items():
+        for type, count in types.items():
+            world_writer.writerow([iid, type, count])
 
 def main(world_folder):
     """
@@ -155,19 +179,26 @@ def main(world_folder):
     :returns: 0 if successful, 1 if a Keyboard Interrupt signal was received
     """
     world = WorldFolder(world_folder)
-    #item_totals_f = open("item_totals.txt","a+")
+    world_totals_f = open("item_totals.csv","a+")
     inv_contents_f = open('inv_contents.csv', 'w')
-    header_writer = csv.writer(inv_contents_f)
-    header_writer.writerow(inv_content_headers)
+    inv_writer = csv.writer(inv_contents_f)
+    inv_writer.writerow(inv_content_headers)
+
+    if (not os.path.exists('item_totals.txt')):
+        world_writer = csv.writer(world_totals_f)
+        world_writer.writerow(world_total_headers)
 
     try:
         for chunk in world.iter_nbt():
-            print_results(inventories_per_chunk(chunk["Level"]), inv_contents_f)
+            print_inv_contents(inventories_per_chunk(chunk["Level"]), inv_contents_f)
+        print_world_contents(world_totals_f)
     except KeyboardInterrupt:
         inv_contents_f.close()
+        world_totals_f.close()
         return 1
 
     inv_contents_f.close()
+    world_totals_f.close()
     return 0
 
 if __name__ == '__main__':
