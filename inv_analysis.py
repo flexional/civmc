@@ -12,7 +12,6 @@ from nbt.world import WorldFolder
 List of valid entity IDs that have inventories
 
 Not yet included: player inventory, player armor, player hands, villager armor, villager hands, ender_chest, horse/mule/donkey saddle/armor
-Not yet included: total item count file
 
 Notes:
     - minecraft:trapped_chest appears as minecraft:chest
@@ -40,7 +39,7 @@ class Position(object):
 
 class Inventory(object):
     def __init__(self, eid, pos, items, saddle, armor):
-        self.eid  = eid[10:]
+        self.eid  = eid
         self.pos   = Position(*pos)
         self.items = items
         self.saddle = saddle
@@ -60,7 +59,7 @@ def items_from_nbt(nbtlist):
         # Integer before the "flattening"
         # Prefixed string after the "flattening"
 
-        if type(iid) == str and iid.startswith('minecraft:'):
+        if iid.startswith('minecraft:'):
             iid = iid[10:]
         count = item['Count'].value
         damage = item['Damage'].value
@@ -77,6 +76,30 @@ def items_from_nbt(nbtlist):
         world_items[iid][damage] += count
     return items
 
+def player_inv(uuid, path):
+    nbtfile = nbt.nbt.NBTFile(path, 'rb')
+    if not "bukkit" in nbtfile:
+        return
+    if not "lastPlayed" in nbtfile["bukkit"]:
+        return
+    #for item in nbtfile['Inventory']:
+        #print(item['Slot'].value, item['id'].value, item['Count'].value, item['Damage'].value)
+    try:
+        items = items_from_nbt(nbtfile['Inventory'])
+    except KeyError:
+        items = {}
+
+    try:
+        pos = nbtfile['Pos']
+        x = pos[0].value
+        y = pos[1].value
+        z = pos[2].value
+    except KeyError:
+        x = 0
+        y = 0
+        z = 0
+    return (Inventory(uuid, (x,y,z), items, None, None))
+
 def inventories_per_chunk(chunk):
     """
     Find inventories and get contents in a given chunk.
@@ -90,6 +113,7 @@ def inventories_per_chunk(chunk):
     armor = None
 
     for entity in chunk['Entities']:
+        # TODO: clean up real_eid vs eid, super hacky.  Bad code.
         eid = entity['id'].value
         if eid in valid_item_eids or eid in valid_mob_eids:
             pos = entity['Pos']
@@ -122,12 +146,12 @@ def inventories_per_chunk(chunk):
                 except KeyError:
                     saddle = None
 
+            if eid.startswith('minecraft:'):
+                eid = eid[10:]
             inventories.append(Inventory(eid, (x,y,z), items, saddle, armor))
 
     for entity in chunk['TileEntities']:
         eid = entity['id'].value
-        #if eid != 'minecraft:villager' and eid != 'minecraft:cow' and eid != 'minecraft:chicken':
-        #    print(entity.pretty_tree())
         if eid in valid_item_eids or eid in valid_mob_eids:
             x = entity['x'].value
             y = entity['y'].value
@@ -138,12 +162,14 @@ def inventories_per_chunk(chunk):
             except KeyError:
                 items = {}
 
+            if eid.startswith('minecraft:'):
+                eid = eid[10:]
             inventories.append(Inventory(eid, (x,y,z), items, saddle, armor))
     return inventories
 
-def print_inv_contents(inventories, inv_f):
+def print_inv_contents(inventory, inv_f):
     """
-    Write all inventories' type, coordinates, item name, item type, and item count to f.
+    Write all inventory type, coordinates, item name, item type, and item count to f.
 
     :param inventories: list of Inventory objects
     :param inv_f: open file descriptor for writing inventory data to
@@ -151,17 +177,15 @@ def print_inv_contents(inventories, inv_f):
 
     inv_writer = csv.writer(inv_f)
 
-    # TODO: Probably could increase performance of this twice-nested loop
-    for inventory in inventories:
-        for iid, types in inventory.items.items():
-            for type, count in types.items():
-                inv_writer.writerow([\
-                        inventory.eid, \
-                        '{0:.3g}'.format(inventory.pos.x), \
-                        '{0:.3g}'.format(inventory.pos.y), \
-                        '{0:.3g}'.format(inventory.pos.z), \
-                        iid, type, count\
-                        ])
+    for iid, types in inventory.items.items():
+        for type, count in types.items():
+            inv_writer.writerow([\
+                    inventory.eid, \
+                    '{0:.3g}'.format(inventory.pos.x), \
+                    '{0:.3g}'.format(inventory.pos.y), \
+                    '{0:.3g}'.format(inventory.pos.z), \
+                    iid, type, count\
+                    ])
 
 def print_world_contents(world_f):
     """
@@ -179,7 +203,7 @@ def main(world_folder):
     :returns: 0 if successful, 1 if a Keyboard Interrupt signal was received
     """
     world = WorldFolder(world_folder)
-    world_totals_f = open("item_totals.csv","a+")
+    world_totals_f = open("item_totals.csv","w")
     inv_contents_f = open('inv_contents.csv', 'w')
     inv_writer = csv.writer(inv_contents_f)
     inv_writer.writerow(inv_content_headers)
@@ -189,8 +213,16 @@ def main(world_folder):
         world_writer.writerow(world_total_headers)
 
     try:
+        # get non-player inventories
         for chunk in world.iter_nbt():
-            print_inv_contents(inventories_per_chunk(chunk["Level"]), inv_contents_f)
+            for inventory in inventories_per_chunk(chunk["Level"]):
+                print_inv_contents(inventory, inv_contents_f)
+        # get player inventories
+        for root, dirs, files in os.walk(world_folder):
+            for file in files:
+                if file.endswith(".dat") and len(file) == 40:
+                    uuid = file[0:36]
+                    print_inv_contents(player_inv(uuid, os.path.join(root, file)), inv_contents_f)
         print_world_contents(world_totals_f)
     except KeyboardInterrupt:
         inv_contents_f.close()
@@ -199,6 +231,7 @@ def main(world_folder):
 
     inv_contents_f.close()
     world_totals_f.close()
+
     return 0
 
 if __name__ == '__main__':
