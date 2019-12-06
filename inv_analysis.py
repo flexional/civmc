@@ -7,8 +7,7 @@ Notes:
     - Written for Python 2.7
     - minecraft:trapped_chest appears as minecraft:chest
     - <color>_shulker_box appears as shulker_box
-    - Not yet included: horse/mule/donkey saddle/armor
-    - Not included: villager armor, villager hands, ender_chest
+    - Not included: villager armor, villager hands, aggressive mobs (skeletons, zombies, etc), ender_chest
 """
 
 import locale, os, sys
@@ -32,23 +31,6 @@ inv_content_headers = ['Inventory Name', 'x', 'y', 'z', 'Item', 'Lore', 'Data/Da
 world_total_headers = ['Item', 'Lore', 'Data/Damage', 'World Count']
 
 world_inv = []
-
-# TODO: Remove Position class and merge into Inventory class
-class Position(object):
-    """
-    Stores inventory coordinates.
-    """
-    def __init__(self, x,y,z):
-        """
-        Constructs a new Position object with coordinates x, y, and z.
-
-        :param x: x coordinate
-        :param y: y coordinate
-        :param z: z coordinate
-        """
-        self.x = x
-        self.y = y
-        self.z = z
 
 class Item(object):
     """
@@ -98,14 +80,15 @@ class Inventory(object):
     """
     Describes an inventory existing in the world (chests, players, mobs, etc).
     """
-    #TODO: Remove saddle, armor params and merge to items List
-    def __init__(self, full_name, pos, items, saddle, armor):
+    def __init__(self, full_name, x, y, z, items):
         """
         Constructs a new Inventory object with the given minecraft ID, coordinates, and Item objects (including equipped saddle/armor).
 
         :param full_name: the full minecraft ID of the inventory, typically of the form package:inventory_type.
             For player inventories, the full_name is the player's UUID.
-        :param pos: the Position object describing the inventory's coordinates
+        :param x: the x coordinate of the inventory's position
+        :param y: the y coordinate of the inventory's position
+        :param z: the z coordinate of the inventory's position
         :param items: a List of Item objects in the inventory
         """
         self.full_name  = full_name
@@ -113,10 +96,10 @@ class Inventory(object):
             self.common_name = full_name[10:]
         else:
             self.common_name = full_name
-        self.pos   = Position(*pos)
+        self.x = x
+        self.y = y
+        self.z = z
         self.items = items
-        self.saddle = saddle
-        self.armor = armor
 
 def update_world_totals(new_item):
     """
@@ -124,7 +107,7 @@ def update_world_totals(new_item):
 
     :param new_item: the Item object to use to update the world_inv List
     """
-    # Can definitely optimize this search if performance becomes an issue
+    # TODO: Can definitely optimize this search if performance becomes an issue
     for item in world_inv:
         if new_item.equals(item):
             item.set_count(item.count + new_item.count)
@@ -191,7 +174,7 @@ def player_inv(uuid, path):
         x = 0
         y = 0
         z = 0
-    return (Inventory(uuid, (x,y,z), items, None, None))
+    return (Inventory(uuid, x, y, z, items))
 
 def inventories_per_chunk(chunk):
     """
@@ -224,24 +207,30 @@ def inventories_per_chunk(chunk):
                 except KeyError:
                     items = []
 
-            # TODO: Horse/mule armor/saddle
-            if full_name == 'minecraft:horse':
-                try:
-                    armor = [entity['ArmorItem']['id'], entity['ArmorItem']['Count'], entity['ArmorItem']['Damage']]
-                except KeyError:
-                    armor = None
-            else:
-                armor = None
+            """
+            if full_name == 'minecraft:horse' or full_name == 'minecraft:mule' or full_name == 'minecraft:donkey':
+                print(entity.pretty_tree())
+            """
+            # Note: Does not include lore if saddle/mount-armor ever receive lore
+            try:
+                armor_item = Item(entity['ArmorItem']['id'].value, -1, \
+                        entity['ArmorItem']['Count'].value, \
+                        entity['ArmorItem']['Damage'].value, "")
+                items.append(armor_item)
+                update_world_totals(armor_item)
+            except KeyError:
+                pass
 
-            if full_name == 'minecraft:horse' or full_name == 'minecraft:mule':
-                try:
-                    saddle = [entity['SaddleItem']['id'], entity['SaddleItem']['Count'], entity['SaddleItem']['Damage']]
-                except KeyError:
-                    saddle = None
-            else:
-                saddle = None
+            try:
+                saddle_item = Item(entity['SaddleItem']['id'].value, -1, \
+                        entity['SaddleItem']['Count'].value, \
+                        entity['SaddleItem']['Damage'].value, "")
+                items.append(saddle_item)
+                update_world_totals(saddle_item)
+            except KeyError:
+                pass
 
-            inventories.append(Inventory(full_name, (x,y,z), items, saddle, armor))
+            inventories.append(Inventory(full_name, x, y, z, items))
 
     for entity in chunk['TileEntities']:
         full_name = entity['id'].value
@@ -256,7 +245,7 @@ def inventories_per_chunk(chunk):
             except KeyError:
                 items = []
 
-            inventories.append(Inventory(full_name, (x,y,z), items, None, None))
+            inventories.append(Inventory(full_name, x, y, z, items))
     return inventories
 
 def print_inv_contents(inventory, inv_f):
@@ -270,9 +259,9 @@ def print_inv_contents(inventory, inv_f):
     inv_writer = csv.writer(inv_f)
 
     for item in inventory.items:
-        x_pos = '{0:.3g}'.format(inventory.pos.x)
-        y_pos = '{0:.3g}'.format(inventory.pos.y)
-        z_pos = '{0:.3g}'.format(inventory.pos.z)
+        x_pos = '{0:.3g}'.format(inventory.x)
+        y_pos = '{0:.3g}'.format(inventory.y)
+        z_pos = '{0:.3g}'.format(inventory.z)
         inv_writer.writerow([\
                 inventory.common_name, \
                 x_pos, y_pos, z_pos, \
