@@ -299,14 +299,14 @@ def main(world_folder):
     :returns: 0 if successful, 1 if a Keyboard Interrupt signal was received
     """
     world = WorldFolder(world_folder)
-    world_totals_f = open("item_totals.csv","w")
+
     inv_contents_f = open('inv_contents.csv', 'w')
     inv_writer = csv.writer(inv_contents_f)
     inv_writer.writerow(inv_content_headers)
 
-    if (not os.path.exists('item_totals.txt')):
-        world_writer = csv.writer(world_totals_f)
-        world_writer.writerow(world_total_headers)
+    world_totals_f = open("world_contents.csv","w")
+    world_writer = csv.writer(world_totals_f)
+    world_writer.writerow(world_total_headers)
 
     try:
         # get non-player inventories
