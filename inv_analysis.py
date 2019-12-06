@@ -1,6 +1,14 @@
 #!/usr/bin/env python
 """
-Find all world inventories and print contents.
+Outputs contents of every inventory in a given Minecraft world folder.
+
+Notes:
+    - Only tested with Minecraft 1.12.2
+    - Written for Python 2.7
+    - minecraft:trapped_chest appears as minecraft:chest
+    - <color>_shulker_box appears as shulker_box
+    - Not yet included: horse/mule/donkey saddle/armor
+    - Not included: villager armor, villager hands, ender_chest
 """
 
 import locale, os, sys
@@ -10,12 +18,6 @@ from nbt.world import WorldFolder
 
 """
 List of valid entity IDs that have inventories
-
-Not yet included: player armor/hands, villager armor, villager hands, ender_chest, horse/mule/donkey saddle/armor
-
-Notes:
-    - minecraft:trapped_chest appears as minecraft:chest
-    - <color>_shulker_box appears as shulker_box
 """
 valid_item_names = [
         'minecraft:chest', 'minecraft:chest_minecart', 'minecraft:hopper_minecart',
@@ -31,14 +33,37 @@ world_total_headers = ['Item', 'Lore', 'Data/Damage', 'World Count']
 
 world_inv = []
 
+# TODO: Remove Position class and merge into Inventory class
 class Position(object):
+    """
+    Stores inventory coordinates.
+    """
     def __init__(self, x,y,z):
+        """
+        Constructs a new Position object with coordinates x, y, and z.
+
+        :param x: x coordinate
+        :param y: y coordinate
+        :param z: z coordinate
+        """
         self.x = x
         self.y = y
         self.z = z
 
 class Item(object):
+    """
+    Describes an item stack taking up one inventory space.
+    """
     def __init__(self, full_name, slot, count, damage, lore):
+        """
+        Constructs a new Item object with the given minecraft ID, slot number (if applicable), item count (of the stack),
+        damage (sometimes used to distinguish items such as logs), and lore.
+
+        :param full_name: the full minecraft ID of the item, typically of the form package:item_name
+        :param slot: the slot number the item resides in the inventory
+        :param count: the item count of the item stack
+        :param lore: the lore describing the item, if applicable
+        """
         self.full_name = full_name
         if full_name.startswith('minecraft:'):
             self.common_name = full_name[10:]
@@ -50,13 +75,39 @@ class Item(object):
         self.lore = lore
 
     def equals(self, other):
+        """
+        Compares two Item objects for equivalency, which is defined as:
+            1. Both Items have the same full_name
+            2. Both Items have the same damage
+            3. Both Items have the same lore
+
+        :param other: the Item object to compare the calling Item object to.
+        :returns: true if equivalent, false if not
+        """
         return self.full_name == other.full_name and self.damage == other.damage and self.lore == other.lore
 
     def set_count(self, new_count):
+        """
+        Sets the count attribute of the calling Item object to new_count.
+
+        :param new_count: the value to set the calling Item object's count attribute to.
+        """
         self.count = new_count
 
 class Inventory(object):
+    """
+    Describes an inventory existing in the world (chests, players, mobs, etc).
+    """
+    #TODO: Remove saddle, armor params and merge to items List
     def __init__(self, full_name, pos, items, saddle, armor):
+        """
+        Constructs a new Inventory object with the given minecraft ID, coordinates, and Item objects (including equipped saddle/armor).
+
+        :param full_name: the full minecraft ID of the inventory, typically of the form package:inventory_type.
+            For player inventories, the full_name is the player's UUID.
+        :param pos: the Position object describing the inventory's coordinates
+        :param items: a List of Item objects in the inventory
+        """
         self.full_name  = full_name
         if full_name.startswith('minecraft:'):
             self.common_name = full_name[10:]
@@ -68,6 +119,12 @@ class Inventory(object):
         self.armor = armor
 
 def update_world_totals(new_item):
+    """
+    Updates the world_inv List to add new_item or to increase the count if an Item equivalent to new_item already exists in world_inv.
+
+    :param new_item: the Item object to use to update the world_inv List
+    """
+    # Can definitely optimize this search if performance becomes an issue
     for item in world_inv:
         if new_item.equals(item):
             item.set_count(item.count + new_item.count)
@@ -76,7 +133,9 @@ def update_world_totals(new_item):
 
 def items_from_nbt(nbtlist):
     """
-    :param nbtlist: list of nbt item tags
+    Creates a List of Items from the given NBT tags list and updates the world_inv List with each Item.
+
+    :param nbtlist: list of NBT item tags
     :returns: list of Item objects found in the nbtlist
     """
     items = []
@@ -91,6 +150,10 @@ def items_from_nbt(nbtlist):
             slot = ""
 
         try:
+            """
+            TODO (if problematic): Only looks at first lore Tag, ignores any others if applicable.
+            This may cause issues for multiple-lored items.
+            """
             lore = item['tag']['display']['Lore'][0].valuestr()
         except KeyError:
             lore = ""
@@ -101,12 +164,19 @@ def items_from_nbt(nbtlist):
     return items
 
 def player_inv(uuid, path):
+    """
+    Finds the location of a player and gets the contents of their inventory (and equipment).
+
+    :param uuid: the UUID of the player
+    :param path: the absolute path of the player's .dat file
+    :returns: an Inventory object describing the player's inventory
+    """
+
     nbtfile = nbt.nbt.NBTFile(path, 'rb')
     if not "bukkit" in nbtfile:
         return
     if not "lastPlayed" in nbtfile["bukkit"]:
         return
-    #print(nbtfile['Inventory'].pretty_tree())
     try:
         items = items_from_nbt(nbtfile['Inventory'])
     except KeyError:
@@ -125,16 +195,15 @@ def player_inv(uuid, path):
 
 def inventories_per_chunk(chunk):
     """
-    Find inventories and get contents in a given chunk.
+    Finds all non-player inventories in a given chunk  and gets their contents.
 
     :param chunk: a chunk's NBT data to scan for inventories
-    :returns: a list of all inventories in the chunk
+    :returns: a list of all Inventories in the chunk
     """
 
     inventories = []
 
     for entity in chunk['Entities']:
-        # TODO: clean up real_eid vs eid, super hacky.  Bad code.
         full_name = entity['id'].value
         if full_name in valid_item_names or full_name in valid_mob_names:
             pos = entity['Pos']
@@ -192,10 +261,10 @@ def inventories_per_chunk(chunk):
 
 def print_inv_contents(inventory, inv_f):
     """
-    Write all inventory type, coordinates, item name, item type, and item count to f.
+    Writes all of inventory's data to f.
 
-    :param inventories: list of Inventory objects
-    :param inv_f: open file descriptor for writing inventory data to
+    :param inventory: the Inventory object to be written to inv_f
+    :param inv_f: open file descriptor for writing inventory data
     """
 
     inv_writer = csv.writer(inv_f)
@@ -213,7 +282,9 @@ def print_inv_contents(inventory, inv_f):
 
 def print_world_contents(world_f):
     """
-    :param world_f: open file descriptor for writing total world count data to
+    Writes the collective contents of the world to world_f.
+
+    :param world_f: open file descriptor for writing total world count data
     """
 
     world_writer = csv.writer(world_f)
@@ -222,7 +293,9 @@ def print_world_contents(world_f):
 
 def main(world_folder):
     """
-    :param world_folder: file path to a minecraft world data folder
+    Opens/closes file descriptors and goes through all chunks and player .dat files for inventory data.
+
+    :param world_folder: file path to a Minecraft world data folder
     :returns: 0 if successful, 1 if a Keyboard Interrupt signal was received
     """
     world = WorldFolder(world_folder)
