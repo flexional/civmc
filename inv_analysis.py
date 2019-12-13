@@ -12,7 +12,8 @@ Notes:
 
 import locale, os, sys
 import getopt
-import datetime
+import time, datetime
+from tqdm import tqdm
 import csv
 import nbt
 from nbt.world import WorldFolder
@@ -342,11 +343,13 @@ def main(argv):
 
     try:
         # get non-player inventories
-        for chunk in world.iter_nbt():
+        print('Finding non-player inventories by chunk...')
+        for chunk in tqdm(world.iter_nbt()):
             for inventory in inventories_per_chunk(chunk["Level"], verbose):
                 print_inv_contents(inventory, inv_contents_f)
         # get player inventories
-        for root, dirs, files in os.walk(world_folder):
+        print('Searching for player files and collecting inventories...')
+        for root, dirs, files in tqdm(os.walk(world_folder)):
             for file in files:
                 if file.endswith(".dat") and len(file) == 40:
                     uuid = file[0:36]
@@ -369,6 +372,8 @@ def main(argv):
 if __name__ == '__main__':
     args = sys.argv
     if ('python' in args[0]):
+        args = args[2:]
+    elif ('run' in args[0]):
         args = args[2:]
     else:
         args = args[1:]
