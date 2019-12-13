@@ -11,6 +11,7 @@ Notes:
 """
 
 import locale, os, sys
+import getopt
 import datetime
 import csv
 import nbt
@@ -28,7 +29,7 @@ valid_mob_names = [
         'minecraft:villager', 'minecraft:zombie_villager', 'minecraft:horse', 'minecraft:donkey', 'minecraft:mule'
         ]
 
-inv_content_headers = ['Inventory Name', 'x', 'y', 'z', 'Item', 'Lore', 'Data/Damage', 'Count', 'Slot']
+inv_content_headers = ['Inventory Name', 'x', 'y', 'z', 'Item', 'Lore', 'Data/Damage', 'Count']
 world_total_headers = ['Item', 'Lore', 'Data/Damage', 'World Count']
 
 world_inv = []
@@ -37,7 +38,7 @@ class Item(object):
     """
     Describes an item stack taking up one inventory space.
     """
-    def __init__(self, full_name, slot, count, damage, lore):
+    def __init__(self, full_name, count, damage, lore):
         """
         Constructs a new Item object with the given minecraft ID, slot number (if applicable), item count (of the stack),
         damage (sometimes used to distinguish items such as logs), and lore.
@@ -52,7 +53,6 @@ class Item(object):
             self.common_name = full_name[10:]
         else:
             self.common_name = full_name
-        self.slot = slot
         self.count = count
         self.damage = damage
         self.lore = lore
@@ -113,25 +113,20 @@ def update_world_totals(new_item):
         if new_item.equals(item):
             item.set_count(item.count + new_item.count)
             return
-    world_inv.append(Item(new_item.full_name, None, new_item.count, new_item.damage, new_item.lore))
+    world_inv.append(Item(new_item.full_name, new_item.count, new_item.damage, new_item.lore))
 
-def items_from_nbt(nbtlist):
+def items_from_nbt(nbtlist, verbose):
     """
     Creates a List of Items from the given NBT tags list and updates the world_inv List with each Item.
 
     :param nbtlist: list of NBT item tags
-    :returns: list of Item objects found in the nbtlist
+    :returns: list of Item objects found in the nbtlist if verbose, else an empty list
     """
     items = []
     for item in nbtlist:
         full_name = item['id'].value
         count = item['Count'].value
         damage = item['Damage'].value
-
-        try:
-            slot = item['Slot'].value
-        except KeyError:
-            slot = ""
 
         try:
             """
@@ -142,18 +137,22 @@ def items_from_nbt(nbtlist):
         except KeyError:
             lore = ""
 
-        new_item = Item(full_name, slot, count, damage, lore)
-        items.append(new_item)
+        new_item = Item(full_name, count, damage, lore)
+        if (verbose):
+            items.append(new_item)
         update_world_totals(new_item)
-    return items
+    if (verbose):
+        return items
+    else:
+        return []
 
-def player_inv(uuid, path):
+def player_inv(uuid, path, verbose):
     """
     Finds the location of a player and gets the contents of their inventory (and equipment).
 
     :param uuid: the UUID of the player
     :param path: the absolute path of the player's .dat file
-    :returns: an Inventory object describing the player's inventory
+    :returns: an Inventory object describing the player's inventory if verbose, else an empty list
     """
 
     nbtfile = nbt.nbt.NBTFile(path, 'rb')
@@ -162,7 +161,7 @@ def player_inv(uuid, path):
     if not "lastPlayed" in nbtfile["bukkit"]:
         return
     try:
-        items = items_from_nbt(nbtfile['Inventory'])
+        items = items_from_nbt(nbtfile['Inventory'], verbose)
     except KeyError:
         items = []
 
@@ -175,14 +174,18 @@ def player_inv(uuid, path):
         x = 0
         y = 0
         z = 0
-    return (Inventory(uuid, x, y, z, items))
 
-def inventories_per_chunk(chunk):
+    if (verbose):
+        return (Inventory(uuid, x, y, z, items))
+    else:
+        return []
+
+def inventories_per_chunk(chunk, verbose):
     """
     Finds all non-player inventories in a given chunk  and gets their contents.
 
     :param chunk: a chunk's NBT data to scan for inventories
-    :returns: a list of all Inventories in the chunk
+    :returns: a list of all Inventories in the chunk, if verbose, otherwise an empty list
     """
 
     inventories = []
@@ -199,22 +202,18 @@ def inventories_per_chunk(chunk):
             if full_name == 'minecraft:hopper_minecart' or full_name == 'minecraft:chest_minecart' \
                     or full_name == 'minecraft:mule' or full_name == 'minecraft:donkey':
                 try:
-                    items = items_from_nbt(entity['Items'])
+                    items = items_from_nbt(entity['Items'], verbose)
                 except KeyError:
                     items = []
             else:
                 try:
-                    items = items_from_nbt(entity['Inventory'])
+                    items = items_from_nbt(entity['Inventory'], verbose)
                 except KeyError:
                     items = []
 
-            """
-            if full_name == 'minecraft:horse' or full_name == 'minecraft:mule' or full_name == 'minecraft:donkey':
-                print(entity.pretty_tree())
-            """
             # Note: Does not include lore if saddle/mount-armor ever receive lore
             try:
-                armor_item = Item(entity['ArmorItem']['id'].value, -1, \
+                armor_item = Item(entity['ArmorItem']['id'].value, \
                         entity['ArmorItem']['Count'].value, \
                         entity['ArmorItem']['Damage'].value, "")
                 items.append(armor_item)
@@ -223,7 +222,7 @@ def inventories_per_chunk(chunk):
                 pass
 
             try:
-                saddle_item = Item(entity['SaddleItem']['id'].value, -1, \
+                saddle_item = Item(entity['SaddleItem']['id'].value, \
                         entity['SaddleItem']['Count'].value, \
                         entity['SaddleItem']['Damage'].value, "")
                 items.append(saddle_item)
@@ -231,7 +230,8 @@ def inventories_per_chunk(chunk):
             except KeyError:
                 pass
 
-            inventories.append(Inventory(full_name, x, y, z, items))
+            if (verbose):
+                inventories.append(Inventory(full_name, x, y, z, items))
 
     for entity in chunk['TileEntities']:
         full_name = entity['id'].value
@@ -242,12 +242,16 @@ def inventories_per_chunk(chunk):
             z = entity['z'].value
 
             try:
-                items = items_from_nbt(entity['Items'])
+                items = items_from_nbt(entity['Items'], verbose)
             except KeyError:
                 items = []
 
-            inventories.append(Inventory(full_name, x, y, z, items))
-    return inventories
+            if (verbose):
+                inventories.append(Inventory(full_name, x, y, z, items))
+    if (verbose):
+        return inventories
+    else:
+        return []
 
 def print_inv_contents(inventory, inv_f):
     """
@@ -267,7 +271,7 @@ def print_inv_contents(inventory, inv_f):
                 inventory.common_name, \
                 x_pos, y_pos, z_pos, \
                 item.common_name, item.lore, \
-                item.damage, item.count, item.slot\
+                item.damage, item.count\
                 ])
 
 def print_world_contents(world_f):
@@ -281,20 +285,56 @@ def print_world_contents(world_f):
     for item in world_inv:
         world_writer.writerow([item.common_name, item.lore, item.damage, item.count])
 
-def main(world_folder):
+def usage():
+    print 'python2.7 inv_analysis.py -i <world folder> [-v | --verbose | -h | --help]'
+
+def main(argv):
     """
     Opens/closes file descriptors and goes through all chunks and player .dat files for inventory data.
 
-    :param world_folder: file path to a Minecraft world data folder
-    :returns: 0 if successful, 1 if a Keyboard Interrupt signal was received
+    :param argv: command line arguments
     """
-    world = WorldFolder(world_folder)
+    world_folder = None
+    verbose = False
+    try:
+        opts, args = getopt.getopt(argv, 'hvi:', ['help', 'verbose', 'world='])
+    except getopt.GetoptError as err:
+        print str(err)
+        usage()
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            usage()
+            sys.exit(0)
+        elif opt in ('-i', '--world'):
+            world_folder = arg
+        elif opt in ('-v', '--verbose'):
+            verbose = True
+        else:
+            assert False, 'unhandled option'
+
+    # clean path name, eliminate trailing slashes:
+    if (world_folder is None):
+        usage()
+        sys.exit(1)
+    else:
+        world_folder = os.path.normpath(world_folder)
+
+    # if folder exists, pass to NBT module
+    if (not os.path.exists(world_folder)):
+        print("No such folder as " + world_folder)
+        sys.exit(1)
+    else:
+        world = WorldFolder(world_folder)
+
     now = datetime.datetime.now()
     timestamp = str(now.strftime('%Y%m%d_%H-%M-%S'))
 
-    inv_contents_f = open('inv_contents_' + timestamp + '.csv', 'w')
-    inv_writer = csv.writer(inv_contents_f)
-    inv_writer.writerow(inv_content_headers)
+    if (verbose):
+        inv_contents_f = open('inv_contents_' + timestamp + '.csv', 'w')
+        inv_writer = csv.writer(inv_contents_f)
+        inv_writer.writerow(inv_content_headers)
 
     world_totals_f = open('world_contents_' + timestamp + '.csv',"w")
     world_writer = csv.writer(world_totals_f)
@@ -303,35 +343,33 @@ def main(world_folder):
     try:
         # get non-player inventories
         for chunk in world.iter_nbt():
-            for inventory in inventories_per_chunk(chunk["Level"]):
+            for inventory in inventories_per_chunk(chunk["Level"], verbose):
                 print_inv_contents(inventory, inv_contents_f)
         # get player inventories
         for root, dirs, files in os.walk(world_folder):
             for file in files:
                 if file.endswith(".dat") and len(file) == 40:
                     uuid = file[0:36]
-                    print_inv_contents(player_inv(uuid, os.path.join(root, file)), inv_contents_f)
-        # print world totals
+                    p_inv = player_inv(uuid, os.path.join(root, file), verbose)
+                    if (verbose):
+                        print_inv_contents(p_inv, inv_contents_f)        # print world totals
         print_world_contents(world_totals_f)
     except KeyboardInterrupt:
-        inv_contents_f.close()
+        if (verbose):
+            inv_contents_f.close()
         world_totals_f.close()
-        return 1
+        sys.exit(1)
 
-    inv_contents_f.close()
+    if (verbose):
+        inv_contents_f.close()
     world_totals_f.close()
 
-    return 0
+    sys.exit(0)
 
 if __name__ == '__main__':
-    if (len(sys.argv) == 1):
-        print("No world folder specified!")
-        sys.exit(1)
-    world_folder = sys.argv[1]
-    # clean path name, eliminate trailing slashes:
-    world_folder = os.path.normpath(world_folder)
-    if (not os.path.exists(world_folder)):
-        print("No such folder as " + world_folder)
-        sys.exit(1)
-
-    main(world_folder)
+    args = sys.argv
+    if ('python' in args[0]):
+        args = args[2:]
+    else:
+        args = args[1:]
+    main(args)
