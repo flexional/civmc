@@ -11,6 +11,7 @@ Notes:
 """
 
 import locale, os, sys
+import datetime
 import csv
 import nbt
 from nbt.world import WorldFolder
@@ -288,12 +289,14 @@ def main(world_folder):
     :returns: 0 if successful, 1 if a Keyboard Interrupt signal was received
     """
     world = WorldFolder(world_folder)
+    now = datetime.datetime.now()
+    timestamp = str(now.strftime('%Y%m%d_%H-%M-%S'))
 
-    inv_contents_f = open('inv_contents.csv', 'w')
+    inv_contents_f = open('inv_contents_' + timestamp + '.csv', 'w')
     inv_writer = csv.writer(inv_contents_f)
     inv_writer.writerow(inv_content_headers)
 
-    world_totals_f = open("world_contents.csv","w")
+    world_totals_f = open('world_contents_' + timestamp + '.csv',"w")
     world_writer = csv.writer(world_totals_f)
     world_writer.writerow(world_total_headers)
 
