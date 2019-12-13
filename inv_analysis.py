@@ -31,7 +31,7 @@ valid_mob_names = [
         ]
 
 """
-List of items that are capable of degrading
+List of items that are capable of degrading and DO NOT get worn-in
 """
 degradeable_tools = [
         'minecraft:bow', 'minecraft:carrot_on_a_stick', 'minecraft:diamond_axe', 'minecraft:diamond_hoe',
@@ -39,9 +39,14 @@ degradeable_tools = [
         'minecraft:diamond_sword', 'minecraft:fishing_rod', 'minecraft:flint_and_steel', 'minecraft:golden_axe',
         'minecraft:golden_hoe', 'minecraft:golden_horse_armor', 'minecraft:golden_pickaxe',
         'minecraft:golden_shovel', 'minecraft:golden_sword', 'minecraft:iron_axe', 'minecraft:iron_hoe',
-        'minecraft:iron_horse_armor', 'minecraft:iron_pickaxe', 'minecraft:iron_shovel', 'minecraft:iron_sword'
+        'minecraft:iron_horse_armor', 'minecraft:iron_pickaxe', 'minecraft:iron_shovel', 'minecraft:iron_sword',
+        'minecraft:shears', 'minecraft:shield', 'minecraft:stone_axe', 'minecraft:stone_hoe', 'minecraft:stone_pickaxe',
+        'minecraft:stone_shovel', 'minecraft:stone_sword'
         ]
 
+"""
+List of items that are capable of degrading and DO get worn-in
+"""
 degradeable_armor = [
         'minecraft:chainmail_boots', 'minecraft:chainmail_chestplate', 'minecraft:chainmail_helmet',
         'minecraft:chainmail_leggings', 'minecraft:diamond_boots', 'minecraft:diamond_chestplate',
@@ -90,7 +95,12 @@ class Item(object):
         :param other: the Item object to compare the calling Item object to.
         :returns: true if equivalent, false if not
         """
-        return self.full_name == other.full_name and self.damage == other.damage and self.lore == other.lore
+        if (self.full_name in degradeable_tools):
+            return self.full_name == other.full_name and self.lore == other.lore
+        elif (self.full_name in degradeable_armor):
+            return self.full_name == other.full_name
+        else:
+            return self.full_name == other.full_name and self.damage == other.damage and self.lore == other.lore
 
     def set_count(self, new_count):
         """
