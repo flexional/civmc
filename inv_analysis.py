@@ -30,6 +30,28 @@ valid_mob_names = [
         'minecraft:villager', 'minecraft:zombie_villager', 'minecraft:horse', 'minecraft:donkey', 'minecraft:mule'
         ]
 
+"""
+List of items that are capable of degrading
+"""
+degradeable_tools = [
+        'minecraft:bow', 'minecraft:carrot_on_a_stick', 'minecraft:diamond_axe', 'minecraft:diamond_hoe',
+        'minecraft:diamond_horse_armor', 'minecraft:diamond_pickaxe', 'minecraft:diamond_shovel',
+        'minecraft:diamond_sword', 'minecraft:fishing_rod', 'minecraft:flint_and_steel', 'minecraft:golden_axe',
+        'minecraft:golden_hoe', 'minecraft:golden_horse_armor', 'minecraft:golden_pickaxe',
+        'minecraft:golden_shovel', 'minecraft:golden_sword', 'minecraft:iron_axe', 'minecraft:iron_hoe',
+        'minecraft:iron_horse_armor', 'minecraft:iron_pickaxe', 'minecraft:iron_shovel', 'minecraft:iron_sword'
+        ]
+
+degradeable_armor = [
+        'minecraft:chainmail_boots', 'minecraft:chainmail_chestplate', 'minecraft:chainmail_helmet',
+        'minecraft:chainmail_leggings', 'minecraft:diamond_boots', 'minecraft:diamond_chestplate',
+        'minecraft:diamond_helmet', 'minecraft:diamond_leggings', 'minecraft:golden_boots',
+        'minecraft:golden_chestplate', 'minecraft:golden_helmet', 'minecraft:golden_leggings',
+        'minecraft:iron_boots', 'minecraft:iron_chestplate', 'minecraft:iron_helmet',
+        'minecraft:iron_leggings', 'minecraft:leather_boots', 'minecraft:leather_chestplate',
+        'minecraft:leather_helmet', 'minecraft:leather_leggings'
+        ]
+
 inv_content_headers = ['Inventory Name', 'x', 'y', 'z', 'Item', 'Lore', 'Data/Damage', 'Count']
 world_total_headers = ['Item', 'Lore', 'Data/Damage', 'World Count']
 
@@ -265,9 +287,9 @@ def print_inv_contents(inventory, inv_f):
     inv_writer = csv.writer(inv_f)
 
     for item in inventory.items:
-        x_pos = '{0:.3g}'.format(inventory.x)
-        y_pos = '{0:.3g}'.format(inventory.y)
-        z_pos = '{0:.3g}'.format(inventory.z)
+        x_pos = '{0:.3f}'.format(inventory.x).rstrip('0').rstrip('.')
+        y_pos = '{0:.3f}'.format(inventory.y).rstrip('0').rstrip('.')
+        z_pos = '{0:.3f}'.format(inventory.z).rstrip('0').rstrip('.')
         inv_writer.writerow([\
                 inventory.common_name, \
                 x_pos, y_pos, z_pos, \
@@ -287,7 +309,17 @@ def print_world_contents(world_f):
         world_writer.writerow([item.common_name, item.lore, item.damage, item.count])
 
 def usage():
-    print 'python2.7 inv_analysis.py -i <world folder> [-v | --verbose | -h | --help]'
+    print('<run | python2.7> inv_analysis.py <-i | --world> <world folder> [-v | --verbose | -h | --help]')
+
+"""
+def test(test_f):
+    test_items = []
+    test_items.append(Item('minecraft:test_item', 1, 0, ''))
+    test_inv = Inventory('minecraft:test', 1000000000, 250, 1000000000000000, test_items)
+    print_inv_contents(test_inv, test_f)
+    test_inv = Inventory('minecraft:test', 0, 250, 100.02, test_items)
+    print_inv_contents(test_inv, test_f)
+"""
 
 def main(argv):
     """
@@ -300,7 +332,7 @@ def main(argv):
     try:
         opts, args = getopt.getopt(argv, 'hvi:', ['help', 'verbose', 'world='])
     except getopt.GetoptError as err:
-        print str(err)
+        print(str(err))
         usage()
         sys.exit(2)
 
@@ -341,6 +373,11 @@ def main(argv):
     world_writer = csv.writer(world_totals_f)
     world_writer.writerow(world_total_headers)
 
+    """
+    test_f = open('testing_scin_' + timestamp + '.csv',"w")
+    test(test_f)
+    """
+
     try:
         # get non-player inventories
         print('Finding non-player inventories by chunk...')
@@ -348,8 +385,8 @@ def main(argv):
             for inventory in inventories_per_chunk(chunk["Level"], verbose):
                 print_inv_contents(inventory, inv_contents_f)
         # get player inventories
-        print('Searching for player files and collecting inventories...')
         for root, dirs, files in tqdm(os.walk(world_folder)):
+            print('Searching for player files and collecting inventories in ' + root)
             for file in files:
                 if file.endswith(".dat") and len(file) == 40:
                     uuid = file[0:36]
