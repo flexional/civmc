@@ -146,7 +146,12 @@ def update_world_totals(new_item):
         if new_item.equals(item):
             item.set_count(item.count + new_item.count)
             return
-    world_inv.append(Item(new_item.full_name, new_item.count, new_item.damage, new_item.lore))
+
+    if (new_item.damage != 0 and (new_item.full_name in degradeable_tools or new_item.full_name in degradeable_armor)):
+        world_inv.append(Item(new_item.full_name, new_item.count, -1, new_item.lore))
+    else:
+        world_inv.append(Item(new_item.full_name, new_item.count, new_item.damage, new_item.lore))
+
 
 def items_from_nbt(nbtlist, verbose):
     """
